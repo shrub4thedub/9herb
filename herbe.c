@@ -3,7 +3,6 @@
 #include <draw.h>
 #include <event.h>
 #include <keyboard.h>
-#include <thread.h>
 
 #include "config.h"
 
@@ -22,10 +21,7 @@ typedef struct {
 Font *font, *titlefont;
 Image *bg, *borderimg, *textcolor;
 Notif notif;
-int running = 1;
 int exitcode = 2;
-Channel *timerc;
-Channel *eventc;
 
 void
 usage(void)
@@ -181,50 +177,13 @@ drawnotif(void)
 	flushimage(display, 1);
 }
 
-void
-timerproc(void*)
-{
-	if(duration > 0) {
-		sleep(duration * 1000);
-		send(timerc, nil);
-	}
-}
 
 void
-eventproc(void*)
+eresized(int new)
 {
-	Event e;
-	int etype;
-
-	einit(Emouse|Ekeyboard);
-
-	for(;;) {
-		etype = event(&e);
-		if(etype == 0)
-			continue;
-
-		switch(etype) {
-		case Emouse:
-			if(e.mouse.buttons & 1) {
-				exitcode = 2;
-				send(eventc, nil);
-				return;
-			}
-			if(e.mouse.buttons & 4) {
-				exitcode = 0;
-				send(eventc, nil);
-				return;
-			}
-			break;
-		case Ekeyboard:
-			if(e.kbdc == 'q' || e.kbdc == Kdel) {
-				exitcode = 2;
-				send(eventc, nil);
-				return;
-			}
-			break;
-		}
-	}
+	if(new && getwindow(display, Refnone) < 0)
+		fatal("can't reattach to window");
+	drawnotif();
 }
 
 void
@@ -249,8 +208,8 @@ void
 main(int argc, char *argv[])
 {
 	char *text;
-	int i;
-	Alt alts[3];
+	int i, timer, etype;
+	Event e;
 
 	ARGBEGIN {
 	default:
@@ -292,27 +251,43 @@ main(int argc, char *argv[])
 	parsetext(text);
 	free(text);
 
-	timerc = chancreate(sizeof(void*), 0);
-	eventc = chancreate(sizeof(void*), 0);
+	einit(Emouse|Ekeyboard);
 
-	if(timerc == nil || eventc == nil)
-		fatal("chancreate: %r");
-
-	alts[0].c = timerc;
-	alts[0].v = nil;
-	alts[0].op = CHANRCV;
-	alts[1].c = eventc;
-	alts[1].v = nil;
-	alts[1].op = CHANRCV;
-	alts[2].op = CHANEND;
-
-	proccreate(timerproc, nil, STACK);
-	proccreate(eventproc, nil, STACK);
+	if(duration > 0)
+		timer = etimer(0, duration * 1000);
 
 	drawnotif();
 
-	alt(alts);
+	for(;;) {
+		etype = event(&e);
 
+		switch(etype) {
+		case Emouse:
+			if(e.mouse.buttons & 1) {
+				exitcode = 2;
+				goto done;
+			}
+			if(e.mouse.buttons & 4) {
+				exitcode = 0;
+				goto done;
+			}
+			break;
+		case Ekeyboard:
+			if(e.kbdc == 'q' || e.kbdc == Kdel) {
+				exitcode = 2;
+				goto done;
+			}
+			break;
+		default:
+			if(duration > 0 && etype == timer) {
+				exitcode = 2;
+				goto done;
+			}
+			break;
+		}
+	}
+
+done:
 	cleanup();
 	exits(exitcode == 0 ? nil : "dismissed");
 }
