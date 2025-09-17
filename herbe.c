@@ -19,8 +19,6 @@ typedef struct {
 	int nlines;
 } Notif;
 
-Display *display;
-Image *screen;
 Font *font, *titlefont;
 Image *bg, *borderimg, *textcolor;
 Notif notif;
@@ -245,8 +243,6 @@ cleanup(void)
 	if(textcolor) freeimage(textcolor);
 	if(font && font != display->defaultfont) freefont(font);
 	if(titlefont && titlefont != display->defaultfont) freefont(titlefont);
-
-	closedisplay(display);
 }
 
 void
@@ -277,9 +273,6 @@ main(int argc, char *argv[])
 
 	if(initdraw(nil, nil, "herbe") < 0)
 		fatal("initdraw: %r");
-
-	display = _display;
-	screen = _screen;
 
 	font = openfont(display, fontname);
 	if(font == nil)
