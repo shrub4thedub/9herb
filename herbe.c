@@ -21,7 +21,7 @@ typedef struct {
 Display *display;
 Image *screen;
 Font *font, *titlefont;
-Image *bg, *border, *textcolor;
+Image *bg, *borderimg, *textcolor;
 Notif notif;
 int running = 1;
 int exitcode = 2;
@@ -36,7 +36,7 @@ usage(void)
 }
 
 void
-sysfatal(char *fmt, ...)
+fatal(char *fmt, ...)
 {
 	va_list arg;
 	char buf[1024];
@@ -98,7 +98,7 @@ parsetext(char *text)
 	size = 5;
 	notif.lines = malloc(size * sizeof(char*));
 	if(notif.lines == nil)
-		sysfatal("malloc: %r");
+		fatal("malloc: %r");
 
 	p = text;
 	while(*p) {
@@ -110,12 +110,12 @@ parsetext(char *text)
 			size += 5;
 			notif.lines = realloc(notif.lines, size * sizeof(char*));
 			if(notif.lines == nil)
-				sysfatal("realloc: %r");
+				fatal("realloc: %r");
 		}
 
 		notif.lines[notif.nlines] = malloc(len + 1);
 		if(notif.lines[notif.nlines] == nil)
-			sysfatal("malloc: %r");
+			fatal("malloc: %r");
 
 		memmove(notif.lines[notif.nlines], p, len);
 		notif.lines[notif.nlines][len] = '\0';
@@ -166,7 +166,7 @@ drawnotif(void)
 	p = getpos();
 	r = Rect(p.x, p.y, p.x + notif.w, p.y + notif.h);
 
-	draw(screen, insetrect(r, -bordersize), border, nil, ZP);
+	draw(screen, insetrect(r, -bordersize), borderimg, nil, ZP);
 	draw(screen, r, bg, nil, ZP);
 
 	tp.x = r.min.x + padding;
@@ -241,7 +241,7 @@ cleanup(void)
 	}
 
 	if(bg) freeimage(bg);
-	if(border) freeimage(border);
+	if(borderimg) freeimage(borderimg);
 	if(textcolor) freeimage(textcolor);
 	if(font && font != display->defaultfont) freefont(font);
 	if(titlefont && titlefont != display->defaultfont) freefont(titlefont);
@@ -254,11 +254,7 @@ main(int argc, char *argv[])
 {
 	char *text;
 	int i;
-	Alt alts[] = {
-		{ timerc, nil, CHANRCV },
-		{ eventc, nil, CHANRCV },
-		{ nil, nil, CHANEND }
-	};
+	Alt alts[3];
 
 	ARGBEGIN {
 	default:
@@ -273,14 +269,14 @@ main(int argc, char *argv[])
 	for(i = 0; i < argc; i++) {
 		text = realloc(text, strlen(text) + strlen(argv[i]) + 2);
 		if(text == nil)
-			sysfatal("realloc: %r");
+			fatal("realloc: %r");
 		if(i > 0)
 			strcat(text, " ");
 		strcat(text, argv[i]);
 	}
 
 	if(initdraw(nil, nil, "herbe") < 0)
-		sysfatal("initdraw: %r");
+		fatal("initdraw: %r");
 
 	display = _display;
 	screen = _screen;
@@ -294,11 +290,11 @@ main(int argc, char *argv[])
 		titlefont = font;
 
 	bg = allocimage(display, Rect(0, 0, 1, 1), CMAP8, 1, bgcolor);
-	border = allocimage(display, Rect(0, 0, 1, 1), CMAP8, 1, bordercolor);
+	borderimg = allocimage(display, Rect(0, 0, 1, 1), CMAP8, 1, bordercolor);
 	textcolor = allocimage(display, Rect(0, 0, 1, 1), CMAP8, 1, fontcolor);
 
-	if(bg == nil || border == nil || textcolor == nil)
-		sysfatal("allocimage: %r");
+	if(bg == nil || borderimg == nil || textcolor == nil)
+		fatal("allocimage: %r");
 
 	parsetext(text);
 	free(text);
@@ -307,7 +303,17 @@ main(int argc, char *argv[])
 	eventc = chancreate(sizeof(void*), 0);
 
 	if(timerc == nil || eventc == nil)
-		sysfatal("chancreate: %r");
+		fatal("chancreate: %r");
+
+	alts[0].c = timerc;
+	alts[0].v = nil;
+	alts[0].op = CHANRCV;
+	alts[1].c = eventc;
+	alts[1].v = nil;
+	alts[1].op = CHANRCV;
+	alts[2].c = nil;
+	alts[2].v = nil;
+	alts[2].op = CHANEND;
 
 	proccreate(timerproc, nil, STACK);
 	proccreate(eventproc, nil, STACK);
