@@ -251,9 +251,17 @@ directnotif(char *text)
 	if(fork() != 0)
 		exits(nil); /* Parent exits immediately */
 
-	/* Initialize display for direct screen drawing */
+	/* Create a minimal 1x1 window to get display access */
 	if(initdraw(nil, nil, "herbe") < 0)
 		fatal("initdraw: %r");
+
+	/* Get access to the full screen image */
+	if(display->image == nil) {
+		/* Try to open screen directly */
+		display->image = readimage(display, open("/dev/screen", OREAD), 0);
+		if(display->image == nil)
+			fatal("can't access screen: %r");
+	}
 
 	font = openfont(display, fontname);
 	if(font == nil)
@@ -327,14 +335,9 @@ restore:
 	draw(display->image, r, backup, nil, ZP);
 	flushimage(display, 1);
 
-	/* Force screen refresh by writing to /dev/screen */
-	{
-		int screenfd = open("/dev/screen", OWRITE);
-		if(screenfd >= 0) {
-			write(screenfd, "refresh", 7);
-			close(screenfd);
-		}
-	}
+	/* Force multiple flushes to ensure screen updates */
+	flushimage(display, 1);
+	flushimage(display, 1);
 
 	freeimage(backup);
 	cleanup();
