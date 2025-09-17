@@ -3,6 +3,7 @@
 #include <draw.h>
 #include <event.h>
 #include <keyboard.h>
+#include <thread.h>
 
 #include "config.h"
 
@@ -66,10 +67,8 @@ getmaxlen(char *s, Font *f, int maxwidth)
 	if(width <= maxwidth)
 		return len;
 
-	start = s;
 	for(i = 0; i < len && s[i] != '\n'; i++) {
-		p = s + i + 1;
-		width = textwidth(f, start);
+		width = textwidth(f, s);
 		if(width > maxwidth) {
 			while(i > 0 && s[i] != ' ')
 				i--;
@@ -311,8 +310,6 @@ main(int argc, char *argv[])
 	alts[1].c = eventc;
 	alts[1].v = nil;
 	alts[1].op = CHANRCV;
-	alts[2].c = nil;
-	alts[2].v = nil;
 	alts[2].op = CHANEND;
 
 	proccreate(timerproc, nil, STACK);
