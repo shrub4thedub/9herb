@@ -197,6 +197,9 @@ void
 unhidewindow(void)
 {
 	int wctl;
+	char cmd[100];
+
+	fprint(2, "herbe: attempting to unhide window\n");
 
 	wctl = open("/dev/wctl", OWRITE);
 	if(wctl < 0) {
@@ -204,15 +207,19 @@ unhidewindow(void)
 		return;
 	}
 
-	/* Unhide the window */
-	if(write(wctl, "unhide", 6) < 0)
+	/* Try different approaches to show the window */
+	strcpy(cmd, "unhide");
+	fprint(2, "herbe: writing '%s' to wctl\n", cmd);
+	if(write(wctl, cmd, strlen(cmd)) < 0)
 		fprint(2, "herbe: unhide failed: %r\n");
 
-	/* Bring to top without focus */
-	if(write(wctl, "top", 3) < 0)
+	strcpy(cmd, "top");
+	fprint(2, "herbe: writing '%s' to wctl\n", cmd);
+	if(write(wctl, cmd, strlen(cmd)) < 0)
 		fprint(2, "herbe: top failed: %r\n");
 
 	close(wctl);
+	fprint(2, "herbe: wctl commands sent\n");
 }
 
 void
@@ -356,10 +363,11 @@ main(int argc, char *argv[])
 	if(duration > 0)
 		timer = etimer(0, duration * 1000);
 
-	/* Show the hidden window without stealing focus */
-	unhidewindow();
-
 	drawnotif();
+
+	/* Wait a moment then show the hidden window without stealing focus */
+	sleep(100); /* 100ms delay */
+	unhidewindow();
 
 	for(;;) {
 		etype = event(&e);
