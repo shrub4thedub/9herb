@@ -5,10 +5,13 @@ OFILES=herbe.$O
 
 HFILES=config.h
 
-BIN=/$objtype/bin
+BIN=$home/bin
 
 $TARG: $OFILES
 	$LD -o $target $prereq
 
 %.$O: %.c $HFILES
 	$CC $CFLAGS $stem.c
+
+install:V: $TARG
+	cp $TARG $BIN/

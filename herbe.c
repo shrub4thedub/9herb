@@ -20,6 +20,8 @@ typedef struct {
 
 Font *font, *titlefont;
 Image *bg, *borderimg, *textcolor;
+Image *notifwin;
+Screen *notifscreen;
 Notif notif;
 int exitcode = 2;
 
@@ -148,28 +150,51 @@ getpos(void)
 	return p;
 }
 
+Image*
+createnotifwin(void)
+{
+	Rectangle r;
+	Point p;
+	Image *win;
+
+	p = getpos();
+	r = Rect(0, 0, notif.w, notif.h);
+
+	win = allocwindow(notifscreen, r, Refbackup, DBlack);
+	if(win == nil)
+		fatal("allocwindow: %r");
+
+	/* Position the window on screen */
+	originwindow(win, Pt(0, 0), p);
+
+	return win;
+}
+
 void
 drawnotif(void)
 {
 	Rectangle r;
-	Point p, tp;
+	Point tp;
 	int i;
 
-	p = getpos();
-	r = Rect(p.x, p.y, p.x + notif.w, p.y + notif.h);
+	if(notifwin == nil)
+		return;
 
-	draw(screen, insetrect(r, -bordersize), borderimg, nil, ZP);
-	draw(screen, r, bg, nil, ZP);
+	r = notifwin->r;
+
+	/* Draw border by drawing larger rect first */
+	draw(notifwin, insetrect(r, -bordersize), borderimg, nil, ZP);
+	draw(notifwin, r, bg, nil, ZP);
 
 	tp.x = r.min.x + padding;
 	tp.y = r.min.y + padding + font->ascent;
 
 	for(i = 0; i < notif.nlines; i++) {
 		if(i == 0 && titlefont != nil) {
-			string(screen, tp, textcolor, ZP, titlefont, notif.lines[i]);
+			string(notifwin, tp, textcolor, ZP, titlefont, notif.lines[i]);
 			tp.y += titlefont->height + linespacing;
 		} else {
-			string(screen, tp, textcolor, ZP, font, notif.lines[i]);
+			string(notifwin, tp, textcolor, ZP, font, notif.lines[i]);
 			tp.y += font->height + linespacing;
 		}
 	}
@@ -183,7 +208,7 @@ eresized(int new)
 {
 	if(new && getwindow(display, Refnone) < 0)
 		fatal("can't reattach to window");
-	drawnotif();
+	/* Notification window handles its own geometry */
 }
 
 void
@@ -197,6 +222,8 @@ cleanup(void)
 		free(notif.lines);
 	}
 
+	if(notifwin) freeimage(notifwin);
+	if(notifscreen) freescreen(notifscreen);
 	if(bg) freeimage(bg);
 	if(borderimg) freeimage(borderimg);
 	if(textcolor) freeimage(textcolor);
@@ -251,6 +278,14 @@ main(int argc, char *argv[])
 	parsetext(text);
 	free(text);
 
+	/* Create screen for notification windows */
+	notifscreen = allocscreen(screen, bg, 0);
+	if(notifscreen == nil)
+		fatal("allocscreen: %r");
+
+	/* Create the notification window */
+	notifwin = createnotifwin();
+
 	einit(Emouse|Ekeyboard);
 
 	if(duration > 0)
@@ -263,13 +298,16 @@ main(int argc, char *argv[])
 
 		switch(etype) {
 		case Emouse:
-			if(e.mouse.buttons & 1) {
-				exitcode = 2;
-				goto done;
-			}
-			if(e.mouse.buttons & 4) {
-				exitcode = 0;
-				goto done;
+			/* Check if mouse click is in our notification window */
+			if(ptinrect(e.mouse.xy, notifwin->r)) {
+				if(e.mouse.buttons & 1) {
+					exitcode = 2;
+					goto done;
+				}
+				if(e.mouse.buttons & 4) {
+					exitcode = 0;
+					goto done;
+				}
 			}
 			break;
 		case Ekeyboard:
