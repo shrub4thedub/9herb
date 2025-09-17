@@ -213,10 +213,11 @@ unhidewindow(void)
 	if(write(wctl, cmd, strlen(cmd)) < 0)
 		fprint(2, "herbe: unhide failed: %r\n");
 
-	strcpy(cmd, "top");
+	/* Don't use 'top' as it steals focus */
+	/* strcpy(cmd, "top");
 	fprint(2, "herbe: writing '%s' to wctl\n", cmd);
 	if(write(wctl, cmd, strlen(cmd)) < 0)
-		fprint(2, "herbe: top failed: %r\n");
+		fprint(2, "herbe: top failed: %r\n"); */
 
 	close(wctl);
 	fprint(2, "herbe: wctl commands sent\n");
@@ -363,11 +364,12 @@ main(int argc, char *argv[])
 	if(duration > 0)
 		timer = etimer(0, duration * 1000);
 
-	drawnotif();
-
 	/* Wait a moment then show the hidden window without stealing focus */
 	sleep(100); /* 100ms delay */
 	unhidewindow();
+
+	/* Draw after unhiding to ensure content appears */
+	drawnotif();
 
 	for(;;) {
 		etype = event(&e);
