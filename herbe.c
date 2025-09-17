@@ -151,32 +151,29 @@ getpos(void)
 
 
 void
-drawnotif(void)
+drawdirectnotif(Rectangle r)
 {
-	Rectangle r;
 	Point tp;
 	int i;
 
-	r = screen->r;
-
-	/* Fill background */
-	draw(screen, r, bg, nil, ZP);
+	/* Fill background - draw directly to display->image */
+	draw(display->image, r, bg, nil, ZP);
 
 	/* Draw border */
-	draw(screen, Rect(r.min.x, r.min.y, r.max.x, r.min.y + bordersize), borderimg, nil, ZP);
-	draw(screen, Rect(r.min.x, r.max.y - bordersize, r.max.x, r.max.y), borderimg, nil, ZP);
-	draw(screen, Rect(r.min.x, r.min.y, r.min.x + bordersize, r.max.y), borderimg, nil, ZP);
-	draw(screen, Rect(r.max.x - bordersize, r.min.y, r.max.x, r.max.y), borderimg, nil, ZP);
+	draw(display->image, Rect(r.min.x, r.min.y, r.max.x, r.min.y + bordersize), borderimg, nil, ZP);
+	draw(display->image, Rect(r.min.x, r.max.y - bordersize, r.max.x, r.max.y), borderimg, nil, ZP);
+	draw(display->image, Rect(r.min.x, r.min.y, r.min.x + bordersize, r.max.y), borderimg, nil, ZP);
+	draw(display->image, Rect(r.max.x - bordersize, r.min.y, r.max.x, r.max.y), borderimg, nil, ZP);
 
 	tp.x = r.min.x + bordersize + padding;
 	tp.y = r.min.y + bordersize + padding + font->ascent;
 
 	for(i = 0; i < notif.nlines; i++) {
 		if(i == 0 && titlefont != nil) {
-			string(screen, tp, textcolor, ZP, titlefont, notif.lines[i]);
+			string(display->image, tp, textcolor, ZP, titlefont, notif.lines[i]);
 			tp.y += titlefont->height + linespacing;
 		} else {
-			string(screen, tp, textcolor, ZP, font, notif.lines[i]);
+			string(display->image, tp, textcolor, ZP, font, notif.lines[i]);
 			tp.y += font->height + linespacing;
 		}
 	}
@@ -242,102 +239,15 @@ cleanup(void)
 }
 
 void
-spawnnotif(char *text)
+directnotif(char *text)
 {
-	char *args[15];
+	Image *backup;
+	Rectangle r;
 	Point p;
-	int pid;
-
-	/* Need minimal display setup to calculate geometry */
-	if(initdraw(nil, nil, "herbe") < 0)
-		fatal("initdraw: %r");
-
-	font = openfont(display, fontname);
-	if(font == nil)
-		font = display->defaultfont;
-
-	/* Calculate geometry */
-	parsetext(text);
-	p = getpos();
-
-	/* Try using individual geometry flags instead of -r */
-	pid = fork();
-	if(pid == 0) {
-		char minx[20], miny[20], maxx[20], maxy[20];
-
-		snprint(minx, sizeof minx, "%d", p.x);
-		snprint(miny, sizeof miny, "%d", p.y);
-		snprint(maxx, sizeof maxx, "%d", p.x + notif.w + 2*bordersize);
-		snprint(maxy, sizeof maxy, "%d", p.y + notif.h + 2*bordersize);
-
-		args[0] = "window";
-		args[1] = "-hide"; /* Create window hidden to avoid focus steal */
-		args[2] = "-minx";
-		args[3] = minx;
-		args[4] = "-miny";
-		args[5] = miny;
-		args[6] = "-maxx";
-		args[7] = maxx;
-		args[8] = "-maxy";
-		args[9] = maxy;
-		args[10] = "herbe"; /* Use command name, not argv0 path */
-		args[11] = "-d";
-		args[12] = text;
-		args[13] = nil;
-
-		/* Debug: print what we're trying to execute */
-		fprint(2, "herbe: spawning window %s %s %s %s %s %s %s %s %s %s %s %s %s\n",
-			args[0], args[1], args[2], args[3], args[4], args[5],
-			args[6], args[7], args[8], args[9], args[10], args[11], args[12]);
-
-		exec("/bin/window", args);
-		fatal("exec window: %r");
-	} else if(pid < 0) {
-		fatal("fork: %r");
-	}
-	/* Parent exits, child window will handle notification */
-	exits(nil);
-}
-
-void
-main(int argc, char *argv[])
-{
-	char *text;
-	int i, timer, etype, indisplay = 0;
+	int timer, etype;
 	Event e;
 
-	ARGBEGIN {
-	case 'd':
-		/* -display flag means we're running inside the spawned window */
-		indisplay = 1;
-		break;
-	default:
-		usage();
-	} ARGEND
-
-	if(argc < 1)
-		usage();
-
-	text = malloc(1);
-	text[0] = '\0';
-	for(i = 0; i < argc; i++) {
-		text = realloc(text, strlen(text) + strlen(argv[i]) + 2);
-		if(text == nil)
-			fatal("realloc: %r");
-		if(i > 0)
-			strcat(text, " ");
-		strcat(text, argv[i]);
-	}
-
-	/* If not running in display mode, spawn window and exit */
-	if(!indisplay) {
-		fprint(2, "herbe: spawning notification window\n");
-		spawnnotif(text);
-		/* Never reached */
-	}
-
-	/* We're running inside the spawned window, display notification */
-	fprint(2, "herbe: running in display mode\n");
+	/* Initialize display for direct screen drawing */
 	if(initdraw(nil, nil, "herbe") < 0)
 		fatal("initdraw: %r");
 
@@ -357,50 +267,92 @@ main(int argc, char *argv[])
 		fatal("allocimage: %r");
 
 	parsetext(text);
-	free(text);
+	p = getpos();
+	r = Rect(p.x, p.y, p.x + notif.w + 2*bordersize, p.y + notif.h + 2*bordersize);
+
+	/* Backup the screen area we're going to draw over */
+	backup = allocimage(display, r, display->image->chan, 0, DNofill);
+	if(backup == nil)
+		fatal("allocimage backup: %r");
+
+	draw(backup, backup->r, display->image, nil, r.min);
+
+	/* Draw notification directly to screen */
+	drawdirectnotif(r);
 
 	einit(Emouse|Ekeyboard);
 
 	if(duration > 0)
 		timer = etimer(0, duration * 1000);
 
-	/* Wait a moment then show the hidden window without stealing focus */
-	sleep(100); /* 100ms delay */
-	unhidewindow();
-
-	/* Draw after unhiding to ensure content appears */
-	drawnotif();
-
+	/* Event loop for direct screen notification */
 	for(;;) {
 		etype = event(&e);
 
 		switch(etype) {
 		case Emouse:
-			if(e.mouse.buttons & 1) {
-				exitcode = 2;
-				goto done;
-			}
-			if(e.mouse.buttons & 4) {
-				exitcode = 0;
-				goto done;
+			/* Check if click is in notification area */
+			if(ptinrect(e.mouse.xy, r)) {
+				if(e.mouse.buttons & 1) {
+					exitcode = 2;
+					goto restore;
+				}
+				if(e.mouse.buttons & 4) {
+					exitcode = 0;
+					goto restore;
+				}
 			}
 			break;
 		case Ekeyboard:
 			if(e.kbdc == 'q' || e.kbdc == Kdel) {
 				exitcode = 2;
-				goto done;
+				goto restore;
 			}
 			break;
 		default:
 			if(duration > 0 && etype == timer) {
 				exitcode = 2;
-				goto done;
+				goto restore;
 			}
 			break;
 		}
 	}
 
-done:
+restore:
+	/* Restore the original screen content */
+	draw(display->image, r, backup, nil, ZP);
+	flushimage(display, 1);
+	freeimage(backup);
 	cleanup();
 	exits(exitcode == 0 ? nil : "dismissed");
+}
+
+void
+main(int argc, char *argv[])
+{
+	char *text;
+	int i;
+
+	ARGBEGIN {
+	default:
+		usage();
+	} ARGEND
+
+	if(argc < 1)
+		usage();
+
+	text = malloc(1);
+	text[0] = '\0';
+	for(i = 0; i < argc; i++) {
+		text = realloc(text, strlen(text) + strlen(argv[i]) + 2);
+		if(text == nil)
+			fatal("realloc: %r");
+		if(i > 0)
+			strcat(text, " ");
+		strcat(text, argv[i]);
+	}
+
+	/* Use direct screen drawing approach */
+	directnotif(text);
+	/* Never reached */
 }
