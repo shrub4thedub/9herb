@@ -20,8 +20,6 @@ typedef struct {
 
 Font *font, *titlefont;
 Image *bg, *borderimg, *textcolor;
-Image *notifwin;
-Screen *notifscreen;
 Notif notif;
 int exitcode = 2;
 
@@ -150,25 +148,6 @@ getpos(void)
 	return p;
 }
 
-Image*
-createnotifwin(void)
-{
-	Rectangle r;
-	Point p;
-	Image *win;
-
-	p = getpos();
-	r = Rect(0, 0, notif.w, notif.h);
-
-	win = allocwindow(notifscreen, r, Refbackup, DBlack);
-	if(win == nil)
-		fatal("allocwindow: %r");
-
-	/* Position the window on screen */
-	originwindow(win, Pt(0, 0), p);
-
-	return win;
-}
 
 void
 drawnotif(void)
@@ -177,24 +156,26 @@ drawnotif(void)
 	Point tp;
 	int i;
 
-	if(notifwin == nil)
-		return;
+	r = screen->r;
 
-	r = notifwin->r;
+	/* Fill background */
+	draw(screen, r, bg, nil, ZP);
 
-	/* Draw border by drawing larger rect first */
-	draw(notifwin, insetrect(r, -bordersize), borderimg, nil, ZP);
-	draw(notifwin, r, bg, nil, ZP);
+	/* Draw border */
+	draw(screen, Rect(r.min.x, r.min.y, r.max.x, r.min.y + bordersize), borderimg, nil, ZP);
+	draw(screen, Rect(r.min.x, r.max.y - bordersize, r.max.x, r.max.y), borderimg, nil, ZP);
+	draw(screen, Rect(r.min.x, r.min.y, r.min.x + bordersize, r.max.y), borderimg, nil, ZP);
+	draw(screen, Rect(r.max.x - bordersize, r.min.y, r.max.x, r.max.y), borderimg, nil, ZP);
 
-	tp.x = r.min.x + padding;
-	tp.y = r.min.y + padding + font->ascent;
+	tp.x = r.min.x + bordersize + padding;
+	tp.y = r.min.y + bordersize + padding + font->ascent;
 
 	for(i = 0; i < notif.nlines; i++) {
 		if(i == 0 && titlefont != nil) {
-			string(notifwin, tp, textcolor, ZP, titlefont, notif.lines[i]);
+			string(screen, tp, textcolor, ZP, titlefont, notif.lines[i]);
 			tp.y += titlefont->height + linespacing;
 		} else {
-			string(notifwin, tp, textcolor, ZP, font, notif.lines[i]);
+			string(screen, tp, textcolor, ZP, font, notif.lines[i]);
 			tp.y += font->height + linespacing;
 		}
 	}
@@ -222,8 +203,6 @@ cleanup(void)
 		free(notif.lines);
 	}
 
-	if(notifwin) freeimage(notifwin);
-	if(notifscreen) freescreen(notifscreen);
 	if(bg) freeimage(bg);
 	if(borderimg) freeimage(borderimg);
 	if(textcolor) freeimage(textcolor);
@@ -232,13 +211,58 @@ cleanup(void)
 }
 
 void
+spawnnotif(char *text)
+{
+	char geom[100], *args[10];
+	Point p;
+	int pid;
+
+	/* Need minimal display setup to calculate geometry */
+	if(initdraw(nil, nil, "herbe") < 0)
+		fatal("initdraw: %r");
+
+	font = openfont(display, fontname);
+	if(font == nil)
+		font = display->defaultfont;
+
+	/* Calculate geometry */
+	parsetext(text);
+	p = getpos();
+
+	snprint(geom, sizeof geom, "%d,%d,%d,%d",
+		p.x, p.y, p.x + notif.w + 2*bordersize, p.y + notif.h + 2*bordersize);
+
+	/* Fork and exec window command with geometry */
+	pid = fork();
+	if(pid == 0) {
+		args[0] = "window";
+		args[1] = "-r";
+		args[2] = geom;
+		args[3] = argv0;
+		args[4] = "-d";
+		args[5] = text;
+		args[6] = nil;
+		exec("/bin/window", args);
+		fatal("exec window: %r");
+	} else if(pid < 0) {
+		fatal("fork: %r");
+	}
+	/* Parent exits, child window will handle notification */
+	exits(nil);
+}
+
+void
 main(int argc, char *argv[])
 {
 	char *text;
-	int i, timer, etype;
+	int i, timer, etype, indisplay = 0;
 	Event e;
 
 	ARGBEGIN {
+	case 'd':
+		/* -display flag means we're running inside the spawned window */
+		indisplay = 1;
+		break;
 	default:
 		usage();
 	} ARGEND
@@ -257,6 +281,13 @@ main(int argc, char *argv[])
 		strcat(text, argv[i]);
 	}
 
+	/* If not running in display mode, spawn window and exit */
+	if(!indisplay) {
+		spawnnotif(text);
+		/* Never reached */
+	}
+
+	/* We're running inside the spawned window, display notification */
 	if(initdraw(nil, nil, "herbe") < 0)
 		fatal("initdraw: %r");
 
@@ -278,14 +309,6 @@ main(int argc, char *argv[])
 	parsetext(text);
 	free(text);
 
-	/* Create screen for notification windows */
-	notifscreen = allocscreen(screen, bg, 0);
-	if(notifscreen == nil)
-		fatal("allocscreen: %r");
-
-	/* Create the notification window */
-	notifwin = createnotifwin();
-
 	einit(Emouse|Ekeyboard);
 
 	if(duration > 0)
@@ -298,16 +321,13 @@ main(int argc, char *argv[])
 
 		switch(etype) {
 		case Emouse:
-			/* Check if mouse click is in our notification window */
-			if(ptinrect(e.mouse.xy, notifwin->r)) {
-				if(e.mouse.buttons & 1) {
-					exitcode = 2;
-					goto done;
-				}
-				if(e.mouse.buttons & 4) {
-					exitcode = 0;
-					goto done;
-				}
+			if(e.mouse.buttons & 1) {
+				exitcode = 2;
+				goto done;
+			}
+			if(e.mouse.buttons & 4) {
+				exitcode = 0;
+				goto done;
 			}
 			break;
 		case Ekeyboard:
