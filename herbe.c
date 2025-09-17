@@ -213,7 +213,7 @@ cleanup(void)
 void
 spawnnotif(char *text)
 {
-	char geom[100], *args[10];
+	char *args[15];
 	Point p;
 	int pid;
 
@@ -229,19 +229,29 @@ spawnnotif(char *text)
 	parsetext(text);
 	p = getpos();
 
-	snprint(geom, sizeof geom, "%d,%d,%d,%d",
-		p.x, p.y, p.x + notif.w + 2*bordersize, p.y + notif.h + 2*bordersize);
-
-	/* Fork and exec window command with geometry */
+	/* Try using individual geometry flags instead of -r */
 	pid = fork();
 	if(pid == 0) {
+		char minx[20], miny[20], maxx[20], maxy[20];
+
+		snprint(minx, sizeof minx, "%d", p.x);
+		snprint(miny, sizeof miny, "%d", p.y);
+		snprint(maxx, sizeof maxx, "%d", p.x + notif.w + 2*bordersize);
+		snprint(maxy, sizeof maxy, "%d", p.y + notif.h + 2*bordersize);
+
 		args[0] = "window";
-		args[1] = "-r";
-		args[2] = geom;
-		args[3] = argv0;
-		args[4] = "-d";
-		args[5] = text;
-		args[6] = nil;
+		args[1] = "-minx";
+		args[2] = minx;
+		args[3] = "-miny";
+		args[4] = miny;
+		args[5] = "-maxx";
+		args[6] = maxx;
+		args[7] = "-maxy";
+		args[8] = maxy;
+		args[9] = argv0;
+		args[10] = "-d";
+		args[11] = text;
+		args[12] = nil;
 		exec("/bin/window", args);
 		fatal("exec window: %r");
 	} else if(pid < 0) {
