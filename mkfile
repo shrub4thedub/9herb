@@ -5,7 +5,7 @@ OFILES=herbe.$O
 
 HFILES=config.h
 
-BIN=$home/bin
+BIN=/$objtype/bin
 
 $TARG: $OFILES
 	$LD -o $target $prereq
@@ -15,3 +15,7 @@ $TARG: $OFILES
 
 install:V: $TARG
 	cp $TARG $BIN/
+
+installhome:V: $TARG
+	mkdir -p $home/bin
+	cp $TARG $home/bin/

@@ -249,7 +249,7 @@ spawnnotif(char *text)
 		args[6] = maxx;
 		args[7] = "-maxy";
 		args[8] = maxy;
-		args[9] = argv0;
+		args[9] = "herbe"; /* Use command name, not argv0 path */
 		args[10] = "-d";
 		args[11] = text;
 		args[12] = nil;
