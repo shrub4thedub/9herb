@@ -40,6 +40,7 @@ fatal(char *fmt, ...)
 	vsnprint(buf, sizeof buf, fmt, arg);
 	va_end(arg);
 	fprint(2, "herbe: %s\n", buf);
+	sleep(3000); /* Wait 3 seconds so we can see the error */
 	exits("fatal");
 }
 
@@ -252,6 +253,12 @@ spawnnotif(char *text)
 		args[10] = "-d";
 		args[11] = text;
 		args[12] = nil;
+
+		/* Debug: print what we're trying to execute */
+		fprint(2, "herbe: spawning window %s %s %s %s %s %s %s %s %s %s %s %s\n",
+			args[0], args[1], args[2], args[3], args[4], args[5],
+			args[6], args[7], args[8], args[9], args[10], args[11]);
+
 		exec("/bin/window", args);
 		fatal("exec window: %r");
 	} else if(pid < 0) {
@@ -293,11 +300,13 @@ main(int argc, char *argv[])
 
 	/* If not running in display mode, spawn window and exit */
 	if(!indisplay) {
+		fprint(2, "herbe: spawning notification window\n");
 		spawnnotif(text);
 		/* Never reached */
 	}
 
 	/* We're running inside the spawned window, display notification */
+	fprint(2, "herbe: running in display mode\n");
 	if(initdraw(nil, nil, "herbe") < 0)
 		fatal("initdraw: %r");
 
