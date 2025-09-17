@@ -59,7 +59,6 @@ int
 getmaxlen(char *s, Font *f, int maxwidth)
 {
 	int len, width, i;
-	char *p, *start;
 
 	len = strlen(s);
 	width = textwidth(f, s);
@@ -197,14 +196,16 @@ void
 eventproc(void*)
 {
 	Event e;
+	int etype;
 
 	einit(Emouse|Ekeyboard);
 
 	for(;;) {
-		if(event(&e) == 0)
+		etype = event(&e);
+		if(etype == 0)
 			continue;
 
-		switch(e.type) {
+		switch(etype) {
 		case Emouse:
 			if(e.mouse.buttons & 1) {
 				exitcode = 2;
