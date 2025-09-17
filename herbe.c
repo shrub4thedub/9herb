@@ -194,6 +194,28 @@ eresized(int new)
 }
 
 void
+unhidewindow(void)
+{
+	int wctl;
+
+	wctl = open("/dev/wctl", OWRITE);
+	if(wctl < 0) {
+		fprint(2, "herbe: can't open /dev/wctl: %r\n");
+		return;
+	}
+
+	/* Unhide the window */
+	if(write(wctl, "unhide", 6) < 0)
+		fprint(2, "herbe: unhide failed: %r\n");
+
+	/* Bring to top without focus */
+	if(write(wctl, "top", 3) < 0)
+		fprint(2, "herbe: top failed: %r\n");
+
+	close(wctl);
+}
+
+void
 cleanup(void)
 {
 	int i;
@@ -241,23 +263,24 @@ spawnnotif(char *text)
 		snprint(maxy, sizeof maxy, "%d", p.y + notif.h + 2*bordersize);
 
 		args[0] = "window";
-		args[1] = "-minx";
-		args[2] = minx;
-		args[3] = "-miny";
-		args[4] = miny;
-		args[5] = "-maxx";
-		args[6] = maxx;
-		args[7] = "-maxy";
-		args[8] = maxy;
-		args[9] = "herbe"; /* Use command name, not argv0 path */
-		args[10] = "-d";
-		args[11] = text;
-		args[12] = nil;
+		args[1] = "-hide"; /* Create window hidden to avoid focus steal */
+		args[2] = "-minx";
+		args[3] = minx;
+		args[4] = "-miny";
+		args[5] = miny;
+		args[6] = "-maxx";
+		args[7] = maxx;
+		args[8] = "-maxy";
+		args[9] = maxy;
+		args[10] = "herbe"; /* Use command name, not argv0 path */
+		args[11] = "-d";
+		args[12] = text;
+		args[13] = nil;
 
 		/* Debug: print what we're trying to execute */
-		fprint(2, "herbe: spawning window %s %s %s %s %s %s %s %s %s %s %s %s\n",
+		fprint(2, "herbe: spawning window %s %s %s %s %s %s %s %s %s %s %s %s %s\n",
 			args[0], args[1], args[2], args[3], args[4], args[5],
-			args[6], args[7], args[8], args[9], args[10], args[11]);
+			args[6], args[7], args[8], args[9], args[10], args[11], args[12]);
 
 		exec("/bin/window", args);
 		fatal("exec window: %r");
@@ -332,6 +355,9 @@ main(int argc, char *argv[])
 
 	if(duration > 0)
 		timer = etimer(0, duration * 1000);
+
+	/* Show the hidden window without stealing focus */
+	unhidewindow();
 
 	drawnotif();
 
