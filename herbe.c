@@ -247,6 +247,10 @@ directnotif(char *text)
 	int timer, etype;
 	Event e;
 
+	/* Fork to background so we don't interfere with terminal */
+	if(fork() != 0)
+		exits(nil); /* Parent exits immediately */
+
 	/* Initialize display for direct screen drawing */
 	if(initdraw(nil, nil, "herbe") < 0)
 		fatal("initdraw: %r");
@@ -322,6 +326,16 @@ restore:
 	/* Restore the original screen content */
 	draw(display->image, r, backup, nil, ZP);
 	flushimage(display, 1);
+
+	/* Force screen refresh by writing to /dev/screen */
+	{
+		int screenfd = open("/dev/screen", OWRITE);
+		if(screenfd >= 0) {
+			write(screenfd, "refresh", 7);
+			close(screenfd);
+		}
+	}
+
 	freeimage(backup);
 	cleanup();
 	exits(exitcode == 0 ? nil : "dismissed");
